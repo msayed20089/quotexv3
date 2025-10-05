@@ -20,7 +20,7 @@ TRADING_PAIRS = [
 
 # إعدادات التداول
 TRADE_DURATION = 30
-TRADE_INTERVAL = 3  # كل 3 دقائق
+TRADE_INTERVAL = 1  # كل دقيقة بدل 3 دقائق
 
 # توقيت UTC+3 (توقيت مصر)
 UTC3_TZ = timezone('Africa/Cairo')
