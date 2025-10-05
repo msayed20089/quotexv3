@@ -152,11 +152,11 @@ class TechnicalAnalyzer:
             return {"support": 0, "resistance": 0, "sma_support": 0, "current": 0, "strength": "WEAK"}
     
     def comprehensive_analysis(self, candle_data):
-        """تحليل فني شامل ومتقدم"""
+        """تحليل فني شامل ومتوازن بين BUY و SELL"""
         try:
             prices = [candle['close'] for candle in candle_data]
             if len(prices) < 15:
-                return self.get_advanced_fallback_analysis()
+                return self.get_balanced_fallback_analysis()
             
             # حساب المؤشرات المتقدمة
             rsi = self.calculate_rsi(prices)
@@ -167,7 +167,7 @@ class TechnicalAnalyzer:
             
             current_price = prices[-1]
             
-            # تحليل متقدم
+            # تحليل متقدم ومتوازن
             analysis = {
                 'rsi': rsi,
                 'rsi_signal': "OVERSOLD" if rsi < 30 else "OVERBOUGHT" if rsi > 70 else "NEUTRAL",
@@ -182,44 +182,76 @@ class TechnicalAnalyzer:
                 'sr_strength': sr_data['strength']
             }
             
-            # نظام نقاط متقدم
+            # نظام نقاط متوازن
             buy_points = 0
             sell_points = 0
             
             # RSI analysis (3 points)
             if rsi < 35:
                 buy_points += 3
+                logging.info("   → RSI: إشارة شراء قوية (مشترى مفرط)")
             elif rsi > 65:
                 sell_points += 3
+                logging.info("   → RSI: إشارة بيع قوية (مبيع مفرط)")
             elif 40 <= rsi <= 60:
                 buy_points += 1
                 sell_points += 1
+                logging.info("   → RSI: محايد")
             
             # MACD analysis (2 points)
             if macd_data['histogram'] > 0.0005:
                 buy_points += 2
+                logging.info("   → MACD: إشارة شراء")
             elif macd_data['histogram'] < -0.0005:
                 sell_points += 2
+                logging.info("   → MACD: إشارة بيع")
+            else:
+                buy_points += 1
+                sell_points += 1
+                logging.info("   → MACD: محايد")
             
             # Bollinger Bands analysis (2 points)
             if analysis['bb_position'] < 0.2:
                 buy_points += 2
+                logging.info("   → BB: إشارة شراء (أسفل النطاق)")
             elif analysis['bb_position'] > 0.8:
                 sell_points += 2
+                logging.info("   → BB: إشارة بيع (فوق النطاق)")
+            else:
+                buy_points += 1
+                sell_points += 1
+                logging.info("   → BB: داخل النطاق")
             
             # Trend analysis (3 points)
             if "UPTREND" in trend:
                 buy_points += 3
+                logging.info(f"   → الاتجاه: صاعد ({trend})")
             elif "DOWNTREND" in trend:
                 sell_points += 3
+                logging.info(f"   → الاتجاه: هابط ({trend})")
+            else:
+                buy_points += 1
+                sell_points += 1
+                logging.info("   → الاتجاه: جانبي")
             
             # Support/Resistance analysis (2 points)
-            if analysis['support_distance'] < analysis['support_distance'] * 0.1:
-                buy_points += 2
-            elif analysis['resistance_distance'] < analysis['resistance_distance'] * 0.1:
-                sell_points += 2
+            support_distance_percent = (analysis['support_distance'] / current_price) * 100
+            resistance_distance_percent = (analysis['resistance_distance'] / current_price) * 100
             
-            # تحديد الاتجاه والثقة
+            if support_distance_percent < 0.5:  # قريب من الدعم
+                buy_points += 2
+                logging.info("   → الدعم/MR: إشارة شراء (قريب من الدعم)")
+            elif resistance_distance_percent < 0.5:  # قريب من المقاومة
+                sell_points += 2
+                logging.info("   → المقاومة/MR: إشارة بيع (قريب من المقاومة)")
+            else:
+                buy_points += 1
+                sell_points += 1
+                logging.info("   → الدعم/المقاومة: متوازن")
+            
+            logging.info(f"   → نقاط الشراء: {buy_points} | نقاط البيع: {sell_points}")
+            
+            # تحديد الاتجاه والثقة بشكل متوازن
             total_points = buy_points + sell_points
             if total_points > 0:
                 buy_ratio = buy_points / total_points
@@ -227,21 +259,25 @@ class TechnicalAnalyzer:
                 
                 if buy_ratio > 0.6:
                     direction = "BUY"
-                    confidence = min(95, 60 + int((buy_ratio - 0.6) * 100))
+                    confidence = min(95, 65 + int((buy_ratio - 0.6) * 100))
                     method = "STRONG_BULLISH_SIGNALS"
+                    logging.info(f"   → القرار: BUY (ثقة: {confidence}%)")
                 elif sell_ratio > 0.6:
                     direction = "SELL" 
-                    confidence = min(95, 60 + int((sell_ratio - 0.6) * 100))
+                    confidence = min(95, 65 + int((sell_ratio - 0.6) * 100))
                     method = "STRONG_BEARISH_SIGNALS"
+                    logging.info(f"   → القرار: SELL (ثقة: {confidence}%)")
                 else:
-                    # اتجاه محايد - نتبع الاتجاه
-                    direction = "BUY" if "UPTREND" in trend else "SELL"
-                    confidence = 55
-                    method = "TREND_FOLLOWING"
+                    # اتجاه محايد - نختار عشوائي ولكن متوازن
+                    direction = "BUY" if buy_points > sell_points else "SELL" if sell_points > buy_points else random.choice(['BUY', 'SELL'])
+                    confidence = 55 + min(buy_points, sell_points)
+                    method = "BALANCED_ANALYSIS"
+                    logging.info(f"   → القرار: {direction} (متوازن، ثقة: {confidence}%)")
             else:
                 direction = random.choice(['BUY', 'SELL'])
                 confidence = 50
                 method = "MARKET_NEUTRAL"
+                logging.info(f"   → القرار: {direction} (محايد، ثقة: {confidence}%)")
             
             return {
                 'direction': direction,
@@ -266,7 +302,7 @@ class TechnicalAnalyzer:
             
         except Exception as e:
             logging.error(f"❌ خطأ في التحليل الفني المتقدم: {e}")
-            return self.get_advanced_fallback_analysis()
+            return self.get_balanced_fallback_analysis()
     
     def _get_trend_strength(self, trend):
         """الحصول على قوة الاتجاه"""
@@ -277,12 +313,15 @@ class TechnicalAnalyzer:
         else:
             return "WEAK"
     
-    def get_advanced_fallback_analysis(self):
-        """تحليل احتياطي متقدم"""
+    def get_balanced_fallback_analysis(self):
+        """تحليل احتياطي متوازن"""
         import random
+        # توزيع متوازن بين BUY و SELL
         direction = random.choice(['BUY', 'SELL'])
-        confidence = random.randint(60, 80)
+        confidence = random.randint(55, 75)
         method = random.choice(self.analysis_methods)
+        
+        logging.info(f"   → التحليل الاحتياطي: {direction} (ثقة: {confidence}%)")
         
         return {
             'direction': direction,
