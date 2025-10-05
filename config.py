@@ -15,7 +15,7 @@ QX_LOGIN_URL = 'https://qxbroker.com/ar/sign-in/'
 TRADING_PAIRS = [
     'USD/BRL', 'USD/EGP', 'USD/TRY', 'USD/ARS', 'USD/COP',
     'USD/DZD', 'USD/IDR', 'USD/BDT', 'USD/CAD', 'USD/NGN',
-    'USD/PKR', 'USD/NR', 'USD/MXN', 'USD/PHP'
+    'USD/PKR', 'USD/INR', 'USD/MXN', 'USD/PHP'
 ]
 
 # إعدادات التداول
