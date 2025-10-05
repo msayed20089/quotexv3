@@ -18,6 +18,7 @@ class AdvancedScheduler:
         self.technical_analyzer = TechnicalAnalyzer()
         self.trading_engine = TradingEngine(self.candle_analyzer, self.technical_analyzer)
         
+        # باقي الكود يبقى كما هو...
         # إحصائيات متقدمة
         self.stats = {
             'total_trades': 0,
