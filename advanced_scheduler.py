@@ -1,7 +1,7 @@
 import time
 import logging
 from datetime import datetime, timedelta
-from config import UTC3_TZ, TRADING_PAIRS
+from config import UTC3_TZ, TRADING_PAIRS, TRADE_INTERVAL
 import random
 
 class AdvancedScheduler:
@@ -18,7 +18,6 @@ class AdvancedScheduler:
         self.technical_analyzer = TechnicalAnalyzer()
         self.trading_engine = TradingEngine(self.candle_analyzer, self.technical_analyzer)
         
-        # باقي الكود يبقى كما هو...
         # إحصائيات متقدمة
         self.stats = {
             'total_trades': 0,
@@ -34,7 +33,9 @@ class AdvancedScheduler:
             'total_profit': 0,
             'accuracy_rate': 0,
             'best_pair': '',
-            'worst_pair': ''
+            'worst_pair': '',
+            'trades_per_hour': 0,
+            'hourly_target': 60  # 60 صفقة في الساعة
         }
         
         # تتبع الأداء لكل زوج
@@ -44,12 +45,14 @@ class AdvancedScheduler:
         self.trade_in_progress = False
         self.current_trade_data = None
         self.market_status = "ACTIVE"
+        self.trades_this_hour = 0
+        self.hour_start_time = datetime.now(UTC3_TZ)
         
         # إعدادات متقدمة
         self.trade_settings = {
-            'max_trades_per_hour': 20,
-            'min_confidence': 65,
-            'risk_reward_ratio': 1.5,
+            'max_trades_per_hour': 60,  # 60 صفقة في الساعة
+            'min_confidence': 60,       # ثقة أقل علشان كثر الصفقات
+            'risk_reward_ratio': 1.2,
             'adaptive_trading': True
         }
         
@@ -58,32 +61,30 @@ class AdvancedScheduler:
         return datetime.now(UTC3_TZ)
     
     def calculate_next_trade_time(self):
-        """حساب وقت الصفقة التالية بدقة"""
+        """حساب وقت الصفقة التالية كل دقيقة"""
         now = self.get_utc3_time()
         
-        # الصفقات كل 3 دقائق (0, 3, 6, 9, ...)
-        next_minute = ((now.minute // 3) + 1) * 3
+        # الصفقات كل دقيقة (0, 1, 2, 3, ...)
+        next_trade = now.replace(second=0, microsecond=0) + timedelta(minutes=1)
         
-        if next_minute >= 60:
-            next_minute = 0
-            next_hour = now.hour + 1
-            if next_hour >= 24:
-                next_hour = 0
-        else:
-            next_hour = now.hour
-            
-        next_trade = now.replace(
-            hour=next_hour, 
-            minute=next_minute, 
-            second=0, 
-            microsecond=0
-        )
-        
-        # إذا كان الوقت الحالي بعد الوقت المستهدف، نضيف 3 دقائق
+        # إذا كان الوقت الحالي بعد الوقت المستهدف، نضيف دقيقة
         if next_trade <= now:
-            next_trade += timedelta(minutes=3)
+            next_trade += timedelta(minutes=1)
             
         return next_trade
+    
+    def check_hourly_limit(self):
+        """التحقق من الحد الأقصى للصفقات في الساعة"""
+        current_time = self.get_utc3_time()
+        hour_diff = (current_time - self.hour_start_time).total_seconds() / 3600
+        
+        if hour_diff >= 1:
+            # إعادة تعيين العد كل ساعة
+            self.trades_this_hour = 0
+            self.hour_start_time = current_time
+            logging.info("🔄 إعادة تعيين عداد الصفقات للساعة الجديدة")
+        
+        return self.trades_this_hour < self.trade_settings['max_trades_per_hour']
     
     def get_market_session(self):
         """تحديد جلسة السوق الحالية"""
@@ -106,48 +107,55 @@ class AdvancedScheduler:
         """ضبط الثقة بناء على جلسة السوق والزوج"""
         session = self.get_market_session()
         session_multipliers = {
-            "ASIAN_SESSION": 0.9,      # تقلبات منخفضة
-            "TRANSITION_SESSION": 0.95, # انتقالية
-            "EUROPEAN_SESSION": 1.1,    # تقلبات عالية
-            "OVERLAP_SESSION": 1.2,     # أعلى تقلبات
-            "AMERICAN_SESSION": 1.15,   # تقلبات عالية
-            "EVENING_SESSION": 1.0      # متوسطة
+            "ASIAN_SESSION": 0.85,     # تقلبات منخفضة - ثقة أقل
+            "TRANSITION_SESSION": 0.9,  # انتقالية
+            "EUROPEAN_SESSION": 1.05,   # تقلبات عالية
+            "OVERLAP_SESSION": 1.1,     # أعلى تقلبات
+            "AMERICAN_SESSION": 1.05,   # تقلبات عالية
+            "EVENING_SESSION": 0.95     # متوسطة
         }
         
         adjusted_confidence = base_confidence * session_multipliers.get(session, 1.0)
         
         # ضبط إضافي بناء على أداء الزوج
         pair_perf = self.pair_performance.get(pair, {'wins': 0, 'losses': 0, 'total': 0})
-        if pair_perf['total'] > 5:
+        if pair_perf['total'] > 3:
             win_rate = pair_perf['wins'] / pair_perf['total']
-            if win_rate > 0.7:
-                adjusted_confidence *= 1.1
-            elif win_rate < 0.3:
-                adjusted_confidence *= 0.9
+            if win_rate > 0.6:
+                adjusted_confidence *= 1.05
+            elif win_rate < 0.4:
+                adjusted_confidence *= 0.95
         
         return min(95, adjusted_confidence)
     
     def start_24h_trading(self):
         """بدء التداول 24 ساعة بنظام متقدم"""
-        logging.info("🚀 بدء التداول 24 ساعة بنظام متقدم...")
+        logging.info("🚀 بدء التداول 24 ساعة بنظام الدقيقة الواحدة...")
         
         current_time = self.get_utc3_time().strftime("%H:%M:%S")
         session = self.get_market_session()
         
         welcome_message = f"""
-🎯 <b>بدء تشغيل البوت المتقدم بنجاح!</b>
+🎯 <b>بدء تشغيل البوت السريع بنجاح!</b>
 
-📊 <b>نظام التداول المتقدم</b>
+📊 <b>نظام التداول السريع</b>
+• صفقة كل دقيقة ⚡
 • تحليل فني متكامل
-• تحليل زمني
-• مؤشرات متعددة
-• تحليل الشموع الحقيقي
-• إدارة مخاطر ذكية
+• نتائج فورية بالشموع
+• إحصائيات لحظية
 
 🕒 <b>الوقت الحالي:</b> {current_time} (UTC+3)
 🌐 <b>جلسة التداول:</b> {session}
+📈 <b>الأزواج:</b> {len(TRADING_PAIRS)} زوج
+⚡ <b>الوتيرة:</b> 60 صفقة/ساعة
 
-🚀 <i>استعد لتحليلات دقيقة ونتائج واقعية!</i>
+🎯 <b>مميزات النظام:</b>
+• تحليل RSI + MACD + Bollinger Bands
+• تحديد نتائج دقيقة بالشموع
+• تقارير أداء فورية
+• تكيف مع جلسات السوق
+
+🚀 <i>استعد لتحليلات سريعة ودقيقة!</i>
 """
         self.telegram_bot.send_message(welcome_message)
         
@@ -156,15 +164,22 @@ class AdvancedScheduler:
         
         logging.info(f"⏰ أول صفقة: {self.next_trade_time.strftime('%H:%M:%S')} (بعد {time_until_next:.0f} ثانية)")
         logging.info(f"🌐 جلسة السوق: {session}")
+        logging.info(f"🎯 الوتيرة: صفقة كل دقيقة")
     
     def execute_trade_cycle(self):
-        """دورة الصفقة المتقدمة"""
+        """دورة الصفقة السريعة"""
         if self.trade_in_progress:
             return
             
         try:
             self.trade_in_progress = True
             trade_start_time = self.get_utc3_time()
+            
+            # التحقق من الحد الأقصى للصفقات في الساعة
+            if not self.check_hourly_limit():
+                logging.info("⏸️ تم الوصول للحد الأقصى للصفقات هذه الساعة")
+                self.trade_in_progress = False
+                return
             
             # 1. التحليل الفني واتخاذ القرار
             trade_data = self.trading_engine.analyze_and_decide()
@@ -186,110 +201,98 @@ class AdvancedScheduler:
             self.current_trade_data = {
                 'data': trade_data,
                 'start_time': trade_start_time,
-                'entry_price': None  # سيتم تحديده من الشمعة
+                'entry_price': None
             }
             
-            # 5. إرسال إشارة الصفقة مع تفاصيل التحليل
-            self.send_detailed_trade_signal(trade_data, trade_start_time)
+            # 5. زيادة عداد الصفقات هذه الساعة
+            self.trades_this_hour += 1
+            self.stats['trades_per_hour'] = self.trades_this_hour
             
-            logging.info(f"📤 إشارة صفقة متقدمة: {trade_data['pair']} - {trade_data['direction']}")
-            logging.info(f"📊 الثقة: {trade_data['confidence']}% - الطريقة: {trade_data['analysis_method']}")
+            # 6. إرسال إشارة الصفقة السريعة
+            self.send_quick_trade_signal(trade_data, trade_start_time)
             
-            # 6. انتظار إغلاق الشمعة (30 ثانية)
+            logging.info(f"📤 إشارة صفقة سريعة: {trade_data['pair']} - {trade_data['direction']}")
+            logging.info(f"📊 الثقة: {trade_data['confidence']}% - الصفقات هذه الساعة: {self.trades_this_hour}")
+            
+            # 7. انتظار إغلاق الشمعة (30 ثانية)
             time.sleep(30)
             
-            # 7. الحصول على بيانات الشمعة بعد الإغلاق
+            # 8. الحصول على بيانات الشمعة بعد الإغلاق
             candle_data = self.candle_analyzer.get_candle_data(
                 trade_data['pair'], 
                 trade_start_time
             )
             
-            # 8. تحديد نتيجة الصفقة بدقة
+            # 9. تحديد نتيجة الصفقة بدقة
             result = self.candle_analyzer.determine_trade_result(
                 candle_data, 
                 trade_data['direction'],
-                candle_data['open']  # سعر الدخول هو سعر افتتاح الشمعة
+                candle_data['open']
             )
             
-            # 9. تحديث الإحصائيات
+            # 10. تحديث الإحصائيات
             self.update_advanced_stats(result, trade_data, candle_data)
             
-            # 10. إرسال النتيجة المفصلة
-            self.send_detailed_trade_result(result, trade_data, candle_data)
+            # 11. إرسال النتيجة السريعة
+            self.send_quick_trade_result(result, trade_data, candle_data)
             
             logging.info(f"🎯 دورة الصفقة اكتملت: {trade_data['pair']} - {result}")
             
         except Exception as e:
-            logging.error(f"❌ خطأ في دورة الصفقة المتقدمة: {e}")
+            logging.error(f"❌ خطأ في دورة الصفقة السريعة: {e}")
         finally:
             self.trade_in_progress = False
             self.current_trade_data = None
             self.stats['last_trade_time'] = self.get_utc3_time()
     
-    def send_detailed_trade_signal(self, trade_data, trade_time):
-        """إرسال إشارة صفقة مفصلة"""
+    def send_quick_trade_signal(self, trade_data, trade_time):
+        """إرسال إشارة صفقة سريعة"""
         current_time = self.get_utc3_time().strftime("%H:%M:%S")
-        session = self.get_market_session()
-        
-        # تحويل المؤشرات لنص مقروء
-        indicators = trade_data['indicators']
         
         signal_message = f"""
-📊 <b>إشارة تداول </b>
+⚡ <b>إشارة تداول سريعة</b>
 
 💰 <b>الزوج:</b> {trade_data['pair']}
 🎯 <b>الاتجاه:</b> {trade_data['direction']}
 ⏱ <b>المدة:</b> 30 ثانية
 
-• الجلسة: {session}
-• الوقت: {current_time} (UTC+3)
+📈 <b>التحليل المختصر:</b>
+• الثقة: {trade_data['confidence']}%
+• RSI: {trade_data['indicators']['rsi']}
+• MACD: {trade_data['indicators']['macd_signal']}
+• الاتجاه: {trade_data['indicators']['trend']}
 
+🕒 <b>الوقت:</b> {current_time} (UTC+3)
+🔢 <b>الصفقات هذه الساعة:</b> {self.trades_this_hour}/60
+
+⚡ <b>نتيجة الصفقة بعد 30 ثانية...</b>
 """
         self.telegram_bot.send_message(signal_message)
     
-    def send_detailed_trade_result(self, result, trade_data, candle_data):
-        """إرسال نتيجة صفقة مفصلة"""
+    def send_quick_trade_result(self, result, trade_data, candle_data):
+        """إرسال نتيجة صفقة سريعة"""
         result_emoji = "🎉" if result == 'WIN' else "❌"
         result_text = "WIN 🎉" if result == 'WIN' else "LOSS ❌"
         
         current_time = self.get_utc3_time().strftime("%H:%M:%S")
-        
-        # تحليل السبب
-        reason = self.analyze_trade_reason(result, trade_data, candle_data)
         
         result_message = f"""
 🎯 <b>نتيجة الصفقة</b> {result_emoji}
 
 💰 <b>الزوج:</b> {trade_data['pair']}
 📊 <b>النتيجة:</b> {result_text}
-🕒 <b>الوقت:</b> {current_time} (UTC+3)
+📈 <b>السعر:</b> {candle_data['open']} → {candle_data['close']}
+🕒 <b>الوقت:</b> {current_time}
 
-📊 <b>إحصائيات الجلسة:</b>
+📊 <b>الإحصائيات السريعة:</b>
 • إجمالي الصفقات: {self.stats['total_trades']}
 • الصفقات الرابحة: {self.stats['win_trades']}
 • الصفقات الخاسرة: {self.stats['loss_trades']}
-• صافي الربح: {self.stats['net_profit']}
+• معدل الربح: {self.stats['win_rate']:.1f}%
 
-🚀 <i>جاري تحضير الصفقة القادمة...</i>
+⚡ <b>الصفقة القادمة خلال 30 ثانية...</b>
 """
         self.telegram_bot.send_message(result_message)
-    
-    def analyze_trade_reason(self, result, trade_data, candle_data):
-        """تحليل سبب نتيجة الصفقة"""
-        open_price = candle_data['open']
-        close_price = candle_data['close']
-        direction = trade_data['direction']
-        
-        if direction == "BUY":
-            if result == "WIN":
-                return "• سعر الإغلاق ارتفع عن سعر الافتتاح\n• تحليل الاتجاه كان صحيحاً\n• المؤشرات دعمت قرار الشراء"
-            else:
-                return "• سعر الإغلاق انخفض عن سعر الافتتاح\n• تغير مفاجئ في الاتجاه\n• تقلبات سوقية غير متوقعة"
-        else:  # SELL
-            if result == "WIN":
-                return "• سعر الإغلاق انخفض عن سعر الافتتاح\n• تحليل الاتجاه كان صحيحاً\n• المؤشرات دعمت قرار البيع"
-            else:
-                return "• سعر الإغلاق ارتفع عن سعر الافتتاح\n• تغير مفاجئ في الاتجاه\n• تقلبات سوقية غير متوقعة"
     
     def update_advanced_stats(self, result, trade_data, candle_data):
         """تحديث الإحصائيات المتقدمة"""
@@ -321,8 +324,9 @@ class AdvancedScheduler:
                 self.pair_performance[pair]['losses'] += 1
             self.pair_performance[pair]['total'] += 1
         
-        # تحديث أفضل/أسوأ زوج
-        self.update_best_worst_pairs()
+        # تحديث أفضل/أسوأ زوج كل 10 صفقات
+        if self.stats['total_trades'] % 10 == 0:
+            self.update_best_worst_pairs()
     
     def update_best_worst_pairs(self):
         """تحديث أفضل وأسوأ أزواج"""
@@ -332,7 +336,7 @@ class AdvancedScheduler:
         worst_pair = ''
         
         for pair, perf in self.pair_performance.items():
-            if perf['total'] >= 3:  # على الأقل 3 صفقات
+            if perf['total'] >= 3:
                 win_rate = (perf['wins'] / perf['total']) * 100
                 if win_rate > best_win_rate:
                     best_win_rate = win_rate
@@ -344,62 +348,49 @@ class AdvancedScheduler:
         self.stats['best_pair'] = best_pair
         self.stats['worst_pair'] = worst_pair
     
-    def send_performance_report(self):
-        """إرسال تقرير أداء مفصل"""
+    def send_hourly_report(self):
+        """إرسال تقرير ساعي"""
         current_time = self.get_utc3_time().strftime("%H:%M:%S")
-        session_duration = self.get_utc3_time() - self.stats['session_start']
-        hours, remainder = divmod(session_duration.total_seconds(), 3600)
-        minutes, seconds = divmod(remainder, 60)
-        
-        # تحليل أفضل 3 أزواج
-        top_pairs = []
-        for pair, perf in self.pair_performance.items():
-            if perf['total'] >= 3:
-                win_rate = (perf['wins'] / perf['total']) * 100
-                top_pairs.append((pair, win_rate, perf['wins'], perf['losses']))
-        
-        top_pairs.sort(key=lambda x: x[1], reverse=True)
-        top_3_pairs = top_pairs[:3]
-        
-        pairs_analysis = "\n".join([
-            f"• {pair}: {win_rate:.1f}% ({wins}/{wins+losses})" 
-            for pair, win_rate, wins, losses in top_3_pairs
-        ]) if top_3_pairs else "• لا توجد بيانات كافية"
         
         report_message = f"""
-📊 <b>تقرير أداء مفصل</b>
+📊 <b>تقرير أداء ساعي</b> ⏰
 
-⏰ <b>مدة الجلسة:</b> {int(hours)}h {int(minutes)}m
-📈 <b>إجمالي الصفقات:</b> {self.stats['total_trades']}
-✅ <b>الصفقات الرابحة:</b> {self.stats['win_trades']}
-❌ <b>الصفقات الخاسرة:</b> {self.stats['loss_trades']}
-💰 <b>صافي الربح:</b> {self.stats['net_profit']}
+🔥 <b>الأداء هذه الساعة:</b>
+• الصفقات المنفذة: {self.trades_this_hour}/60
+• معدل التنفيذ: {(self.trades_this_hour/60)*100:.1f}%
+• الصفقات الرابحة: {self.stats['win_trades']}
+• الصفقات الخاسرة: {self.stats['loss_trades']}
+• معدل الربح: {self.stats['win_rate']:.1f}%
 
-📅 <b>الإنجازات:</b>
-• أقوى سلسلة ربح: {self.stats['max_win_streak']}
-• أفضل زوج: {self.stats['best_pair']}
+🎯 <b>الإحصائيات الكلية:</b>
+• إجمالي الصفقات: {self.stats['total_trades']}
+• صافي الربح: {self.stats['net_profit']}
+• أقوى سلسلة: {self.stats['max_win_streak']} ربح
 
-🕒 <b>آخر تحديث:</b> {current_time} (UTC+3)
+🕒 <b>الوقت:</b> {current_time} (UTC+3)
 
+⚡ <b>جاري الاستعداد للساعة القادمة...</b>
 """
         self.telegram_bot.send_message(report_message)
     
     def keep_system_alive(self):
         """الحفاظ على نشاط النظام"""
         try:
-            # إرسال تقرير كل ساعة
             current_time = self.get_utc3_time()
-            if self.stats['last_trade_time']:
-                time_since_last_report = (current_time - self.stats.get('last_report_time', current_time)).total_seconds()
-                if time_since_last_report >= 3600:  # كل ساعة
-                    self.send_performance_report()
-                    self.stats['last_report_time'] = current_time
+            
+            # إرسال تقرير ساعي
+            hour_diff = (current_time - self.hour_start_time).total_seconds() / 3600
+            if hour_diff >= 1 and self.trades_this_hour > 0:
+                self.send_hourly_report()
+                self.trades_this_hour = 0
+                self.hour_start_time = current_time
             
             # تحديث حالة السوق
             session = self.get_market_session()
             if hasattr(self, 'last_session'):
                 if self.last_session != session:
                     logging.info(f"🌐 تغيير جلسة السوق: {self.last_session} → {session}")
+                    self.telegram_bot.send_message(f"🌐 <b>تغيير جلسة التداول</b>\n\n{self.last_session} → {session}")
                     self.last_session = session
             else:
                 self.last_session = session
@@ -412,9 +403,9 @@ class AdvancedScheduler:
         try:
             self.start_24h_trading()
             
-            logging.info("✅ بدء تشغيل الجدولة المتقدمة...")
+            logging.info("✅ بدء تشغيل الجدولة السريعة...")
             
-            # الحلقة الرئيسية المتقدمة
+            # الحلقة الرئيسية السريعة
             while True:
                 current_time = self.get_utc3_time()
                 
@@ -426,7 +417,7 @@ class AdvancedScheduler:
                     logging.info(f"⏰ بدء صفقة جديدة: {current_time.strftime('%H:%M:%S')}")
                     self.execute_trade_cycle()
                     
-                    # حساب الوقت التالي
+                    # حساب الوقت التالي (دقيقة واحدة)
                     self.next_trade_time = self.calculate_next_trade_time()
                     time_until_next = (self.next_trade_time - current_time).total_seconds()
                     
@@ -435,11 +426,11 @@ class AdvancedScheduler:
                 # الحفاظ على نشاط النظام
                 self.keep_system_alive()
                 
-                # انتظار 5 ثواني قبل التكرار (أكثر كفاءة)
-                time.sleep(5)
+                # انتظار 1 ثانية فقط علشان السرعه
+                time.sleep(1)
                     
         except Exception as e:
             logging.error(f"❌ خطأ فادح في التشغيل: {e}")
-            logging.info("🔄 إعادة التشغيل بعد 30 ثانية...")
-            time.sleep(30)
+            logging.info("🔄 إعادة التشغيل بعد 10 ثواني...")
+            time.sleep(10)
             self.run_advanced_scheduler()
