@@ -6,7 +6,7 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN', "7920984703:AAHkRNpgzDxBzS61hAe7r7c
 CHANNEL_ID = os.getenv('CHANNEL_ID', "@Kingelg0ld")
 QX_SIGNUP_URL = "https://broker-qx.pro/sign-up/?lid=1376472"
 
-# بيانات الدخول لـ QX Broker
+# بيانات الدخول لـ QX Broker (للتحليل فقط)
 QX_EMAIL = os.getenv('QX_EMAIL', 'mohamedels928@gmail.com')
 QX_PASSWORD = os.getenv('QX_PASSWORD', 'Mrvip@219')
 QX_LOGIN_URL = 'https://qxbroker.com/ar/sign-in/'
