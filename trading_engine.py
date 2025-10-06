@@ -15,6 +15,7 @@ class TradingEngine:
         self.technical_analyzer = TechnicalAnalyzer()
         
         self.last_analysis = {}
+        self.recent_directions = []  # تتبع الاتجاهات الحديثة
     
     def analyze_and_decide(self):
         """تحليل متقدم واتخاذ قرار التداول"""
@@ -29,9 +30,12 @@ class TradingEngine:
                 # استخدام التحليل الفني الأساسي فقط
                 analysis_result = self.technical_analyzer.comprehensive_analysis(historical_candles)
                 
+                # تطبيق توازن إضافي على الاتجاهات
+                balanced_direction = self.apply_direction_balance(analysis_result['direction'])
+                
                 trade_data = {
                     'pair': pair,
-                    'direction': analysis_result['direction'],
+                    'direction': balanced_direction,
                     'trade_time': datetime.now(UTC3_TZ).strftime("%H:%M:%S"),
                     'duration': 30,
                     'confidence': analysis_result['confidence'],
@@ -56,15 +60,37 @@ class TradingEngine:
             logging.error(f"❌ خطأ في التحليل واتخاذ القرار: {e}")
             return self.get_smart_fallback_analysis(random.choice(self.pairs))
     
+    def apply_direction_balance(self, direction):
+        """تطبيق توازن على الاتجاهات لمنع التكرار"""
+        # حفظ آخر 5 اتجاهات
+        self.recent_directions.append(direction)
+        if len(self.recent_directions) > 5:
+            self.recent_directions.pop(0)
+        
+        # إذا كانت 3 اتجاهات متتالية نفس النوع، نغير الاتجاه
+        if len(self.recent_directions) >= 3:
+            last_three = self.recent_directions[-3:]
+            if all(d == 'BUY' for d in last_three):
+                logging.info("⚖️ تصحيح توازن: تحويل من BUY إلى SELL")
+                return 'SELL'
+            elif all(d == 'SELL' for d in last_three):
+                logging.info("⚖️ تصحيح توازن: تحويل من SELL إلى BUY")
+                return 'BUY'
+        
+        return direction
+    
     def get_smart_fallback_analysis(self, pair):
-        """تحليل احتياطي ذكي"""
-        import random
+        """تحليل احتياطي ذكي مع توازن"""
+        # توزيع 50/50 بين BUY و SELL
         direction = random.choice(['BUY', 'SELL'])
         confidence = random.randint(60, 80)
         
+        # تطبيق التوازن
+        balanced_direction = self.apply_direction_balance(direction)
+        
         return {
             'pair': pair,
-            'direction': direction,
+            'direction': balanced_direction,
             'trade_time': datetime.now(UTC3_TZ).strftime("%H:%M:%S"),
             'duration': 30,
             'confidence': confidence,
