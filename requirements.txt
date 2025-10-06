@@ -1,5 +1,5 @@
-playwright==1.40.0
 python-telegram-bot==20.7
+playwright==1.40.0
 schedule==1.2.0
 requests==2.31.0
 pytz==2023.3
@@ -7,3 +7,4 @@ pandas==2.0.3
 numpy==1.24.3
 psutil==5.9.5
 beautifulsoup4==4.12.2
+aiohttp==3.9.1
