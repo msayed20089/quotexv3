@@ -4,6 +4,7 @@ import logging
 import threading
 import time
 import sys
+import asyncio
 
 # إعداد التسجيل
 logging.basicConfig(
@@ -54,4 +55,10 @@ def main():
         main()
 
 if __name__ == "__main__":
-    main()
+    # تشغيل البوت بشكل صحيح مع asyncio
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.info("⏹️ إيقاف البوت...")
+    except Exception as e:
+        logger.error(f"❌ خطأ فادح: {e}")
