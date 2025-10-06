@@ -8,15 +8,11 @@ class AdvancedScheduler:
     def __init__(self):
         from qx_broker import QXBrokerManager
         from telegram_bot import TelegramBot
-        from candle_analyzer import CandleAnalyzer
-        from technical_analyzer import TechnicalAnalyzer
         from trading_engine import TradingEngine
         
         self.qx_manager = QXBrokerManager()
         self.telegram_bot = TelegramBot()
-        self.candle_analyzer = CandleAnalyzer()
-        self.technical_analyzer = TechnicalAnalyzer()
-        self.trading_engine = TradingEngine(self.candle_analyzer, self.technical_analyzer)
+        self.trading_engine = TradingEngine()  # بدون باراميترات
         
         # إحصائيات متقدمة
         self.stats = {
@@ -31,7 +27,9 @@ class AdvancedScheduler:
             'session_start': datetime.now(UTC3_TZ),
             'last_trade_time': None,
             'skipped_trades': 0,
-            'total_analyzed': 0
+            'total_analyzed': 0,
+            'buy_count': 0,
+            'sell_count': 0
         }
         
         self.next_signal_time = None
@@ -39,6 +37,8 @@ class AdvancedScheduler:
         self.trade_in_progress = False
         self.current_trade_data = None
         self.pending_trade = None
+        
+    # باقي الدوال تبقى كما هي بدون تغيير...
         
     def get_utc3_time(self):
         """الحصول على وقت UTC+3"""
