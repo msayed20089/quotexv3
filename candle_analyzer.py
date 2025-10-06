@@ -109,20 +109,20 @@ class CandleAnalyzer:
         return candle_data
     
     def wait_for_candle_close(self, trade_start_time):
-        """انتظار إغلاق الشمعة (30 ثانية)"""
-        try:
-            candle_close_time = trade_start_time + timedelta(seconds=35)  # +5 ثواني تأخير
-            current_time = datetime.now(UTC3_TZ)
-            wait_seconds = (candle_close_time - current_time).total_seconds()
-            
-            if wait_seconds > 0:
-                logging.info(f"⏳ انتظار إغلاق الشمعة: {wait_seconds:.1f} ثانية")
-                time.sleep(wait_seconds)
-            
-            return True
-        except Exception as e:
-            logging.error(f"❌ خطأ في انتظار إغلاق الشمعة: {e}")
-            return False
+    """انتظار إغلاق الشمعة (30 ثانية)"""
+    try:
+        candle_close_time = trade_start_time + timedelta(seconds=30)
+        current_time = datetime.now(UTC3_TZ)
+        wait_seconds = (candle_close_time - current_time).total_seconds()
+        
+        if wait_seconds > 0:
+            logging.info(f"⏳ انتظار إغلاق الشمعة: {wait_seconds:.1f} ثانية")
+            time.sleep(wait_seconds)
+        
+        return True
+    except Exception as e:
+        logging.error(f"❌ خطأ في انتظار إغلاق الشمعة: {e}")
+        return False
     
     def get_candle_data(self, pair, trade_start_time):
         """الحصول على بيانات الشمعة بعد إغلاقها"""
