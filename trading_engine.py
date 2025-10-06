@@ -4,10 +4,16 @@ from datetime import datetime
 from config import UTC3_TZ, TRADING_PAIRS
 
 class TradingEngine:
-    def __init__(self, candle_analyzer, technical_analyzer):
+    def __init__(self):
         self.pairs = TRADING_PAIRS
-        self.candle_analyzer = candle_analyzer
-        self.technical_analyzer = technical_analyzer
+        
+        # استيراد المحللين داخل الدالة
+        from candle_analyzer import CandleAnalyzer
+        from technical_analyzer import TechnicalAnalyzer
+        
+        self.candle_analyzer = CandleAnalyzer()
+        self.technical_analyzer = TechnicalAnalyzer()
+        
         self.last_analysis = {}
     
     def analyze_and_decide(self):
