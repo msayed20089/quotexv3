@@ -9,12 +9,12 @@ class AdvancedScheduler:
         from qx_broker import QXBrokerManager
         from telegram_bot import TelegramBot
         from trading_engine import TradingEngine
-        from candle_analyzer import CandleAnalyzer  # أضف هذا الاستيراد
+        from candle_analyzer import CandleAnalyzer
         
         self.qx_manager = QXBrokerManager()
         self.telegram_bot = TelegramBot()
         self.trading_engine = TradingEngine()
-        self.candle_analyzer = CandleAnalyzer()  # أضف هذا السطر
+        self.candle_analyzer = CandleAnalyzer()
         
         # إحصائيات متقدمة
         self.stats = {
@@ -36,6 +36,7 @@ class AdvancedScheduler:
         
         self.next_signal_time = None
         self.next_trade_time = None
+        self.next_result_time = None
         self.trade_in_progress = False
         self.current_trade_data = None
         self.pending_trade = None
@@ -45,29 +46,33 @@ class AdvancedScheduler:
         return datetime.now(UTC3_TZ)
     
     def calculate_next_signal_time(self):
-        """حساب وقت الإشارة التالية (كل دقيقة في الثانية 00)"""
+        """حساب وقت الإشارة التالية (كل دقيقتين في الثانية 00)"""
         now = self.get_utc3_time()
         # الانتقال للدقيقة التالية مع ثانية 00
-        next_signal = (now.replace(second=0, microsecond=0) + timedelta(minutes=1))
+        next_signal = (now.replace(second=0, microsecond=0) + timedelta(minutes=2))
         return next_signal
     
     def calculate_trade_execution_time(self, signal_time):
-        """حساب وقت تنفيذ الصفقة (بعد الإشارة بدقيقة كاملة)"""
+        """حساب وقت تنفيذ الصفقة (بعد الإشارة بدقيقة)"""
         return signal_time + timedelta(minutes=1)
     
     def calculate_result_time(self, trade_time):
-        """حساب وقت نشر النتيجة (بعد التنفيذ بدقيقة كاملة)"""
-        return trade_time + timedelta(minutes=1)
+        """حساب وقت نشر النتيجة (بعد التنفيذ بـ 35 ثانية)"""
+        return trade_time + timedelta(seconds=35)
     
     def format_time_with_zero_seconds(self, dt):
         """تنسيق الوقت مع ثواني 00"""
         return dt.strftime("%H:%M:00")
     
+    def format_time_exact(self, dt):
+        """تنسيق الوقت بدقة"""
+        return dt.strftime("%H:%M:%S")
+    
     def start_trading_system(self):
         """بدء نظام التداول بالتوقيت المحدد"""
         logging.info("🚀 بدء نظام التداول بالتوقيت المحدد...")
         
-        current_time = self.format_time_with_zero_seconds(self.get_utc3_time())
+        current_time = self.format_time_exact(self.get_utc3_time())
         
         welcome_message = f"""
 🎯 <b>بدء تشغيل النظام بالتوقيت المحدد</b>
@@ -75,11 +80,11 @@ class AdvancedScheduler:
 ⏰ <b>نظام التوقيت:</b>
 • 6:00:00 → نشر إشارة الصفقة
 • 6:01:00 → دخول الصفقة
-• 6:02:00 → نشر النتيجة
-• 6:03:00 → الإشارة التالية
+• 6:01:35 → نشر النتيجة
+• 6:02:00 → الإشارة التالية
 
 📊 <b>مميزات النظام:</b>
-• توقيت دقيق بالدقيقة
+• توقيت دقيق بالثانية
 • تحليل فني متقدم
 • نتائج دقيقة بالشموع
 • نشر رسائل التخطي
@@ -95,7 +100,7 @@ class AdvancedScheduler:
         self.next_signal_time = self.calculate_next_signal_time()
         time_until_signal = (self.next_signal_time - self.get_utc3_time()).total_seconds()
         
-        logging.info(f"⏰ أول إشارة: {self.format_time_with_zero_seconds(self.next_signal_time)} (بعد {time_until_signal:.0f} ثانية)")
+        logging.info(f"⏰ أول إشارة: {self.format_time_exact(self.next_signal_time)} (بعد {time_until_signal:.0f} ثانية)")
     
     def execute_signal_cycle(self):
         """دورة الإشارة (نشر إشارة الصفقة)"""
@@ -115,7 +120,7 @@ class AdvancedScheduler:
                 return None
             
             # 4. تخزين بيانات الصفقة المعلقة
-            current_time = self.get_utc3_time().replace(second=0, microsecond=0)
+            current_time = self.get_utc3_time()
             self.pending_trade = {
                 'data': trade_data,
                 'signal_time': current_time,
@@ -128,9 +133,9 @@ class AdvancedScheduler:
             
             logging.info(f"📤 إشارة صفقة: {trade_data['pair']} - {trade_data['direction']}")
             logging.info(f"⏰ مواعيد الصفقة:")
-            logging.info(f"   → الإشارة: {self.format_time_with_zero_seconds(self.pending_trade['signal_time'])}")
-            logging.info(f"   → التنفيذ: {self.format_time_with_zero_seconds(self.pending_trade['trade_time'])}")
-            logging.info(f"   → النتيجة: {self.format_time_with_zero_seconds(self.pending_trade['result_time'])}")
+            logging.info(f"   → الإشارة: {self.format_time_exact(self.pending_trade['signal_time'])}")
+            logging.info(f"   → التنفيذ: {self.format_time_exact(self.pending_trade['trade_time'])}")
+            logging.info(f"   → النتيجة: {self.format_time_exact(self.pending_trade['result_time'])}")
             
             return self.pending_trade
             
@@ -175,9 +180,9 @@ class AdvancedScheduler:
     
     def send_trade_signal(self, trade_data):
         """إرسال إشارة الصفقة"""
-        current_time = self.format_time_with_zero_seconds(self.get_utc3_time())
-        trade_time = self.format_time_with_zero_seconds(self.pending_trade['trade_time'])
-        result_time = self.format_time_with_zero_seconds(self.pending_trade['result_time'])
+        current_time = self.format_time_exact(self.pending_trade['signal_time'])
+        trade_time = self.format_time_exact(self.pending_trade['trade_time'])
+        result_time = self.format_time_exact(self.pending_trade['result_time'])
         
         signal_message = f"""
 📊 <b>إشارة تداول متقدمة</b>
@@ -205,7 +210,7 @@ class AdvancedScheduler:
     
     def send_skip_message(self, trade_data):
         """إرسال رسالة تخطي الصفقة"""
-        current_time = self.format_time_with_zero_seconds(self.get_utc3_time())
+        current_time = self.format_time_exact(self.get_utc3_time())
         
         skip_message = f"""
 ⏭️ <b>تم تخطي الصفقة</b>
@@ -284,7 +289,7 @@ class AdvancedScheduler:
         result_emoji = "🎉" if result == 'WIN' else "❌"
         result_text = "WIN 🎉" if result == 'WIN' else "LOSS ❌"
         
-        current_time = self.format_time_with_zero_seconds(self.get_utc3_time())
+        current_time = self.format_time_exact(self.get_utc3_time())
         price_change = candle_data['close'] - candle_data['open']
         change_percent = (price_change / candle_data['open']) * 100
         
@@ -348,38 +353,45 @@ class AdvancedScheduler:
             while True:
                 current_time = self.get_utc3_time()
                 
-                # الانتظار حتى الثانية 00 من كل دقيقة
-                if current_time.second != 0:
-                    time.sleep(1)
-                    continue
-                
-                # التحقق إذا حان وقت الإشارة
+                # التحقق إذا حان وقت الإشارة (كل دقيقتين)
                 if (self.next_signal_time and 
                     current_time >= self.next_signal_time and 
                     not self.trade_in_progress and 
                     not self.pending_trade):
                     
-                    logging.info(f"⏰ بدء دورة الإشارة: {self.format_time_with_zero_seconds(current_time)}")
+                    logging.info(f"⏰ بدء دورة الإشارة: {self.format_time_exact(current_time)}")
                     pending_trade = self.execute_signal_cycle()
                     
                     if pending_trade:
                         # جدولة التنفيذ بعد دقيقة
                         self.next_trade_time = pending_trade['trade_time']
-                        logging.info(f"⏰ تم جدولة التنفيذ: {self.format_time_with_zero_seconds(self.next_trade_time)}")
+                        self.next_result_time = pending_trade['result_time']
+                        logging.info(f"⏰ تم جدولة التنفيذ: {self.format_time_exact(self.next_trade_time)}")
+                        logging.info(f"⏰ تم جدولة النتيجة: {self.format_time_exact(self.next_result_time)}")
                     
-                    # حساب وقت الإشارة التالية
+                    # حساب وقت الإشارة التالية (بعد دقيقتين)
                     self.next_signal_time = self.calculate_next_signal_time()
-                    logging.info(f"⏰ الإشارة القادمة: {self.format_time_with_zero_seconds(self.next_signal_time)}")
+                    logging.info(f"⏰ الإشارة القادمة: {self.format_time_exact(self.next_signal_time)}")
                 
-                # التحقق إذا حان وقت التنفيذ
+                # التحقق إذا حان وقت التنفيذ (بعد الإشارة بدقيقة)
                 if (self.pending_trade and 
                     self.next_trade_time and 
                     current_time >= self.next_trade_time and 
                     not self.trade_in_progress):
                     
-                    logging.info(f"🎯 بدء دورة التنفيذ: {self.format_time_with_zero_seconds(current_time)}")
+                    logging.info(f"🎯 بدء دورة التنفيذ: {self.format_time_exact(current_time)}")
                     self.execute_trade_cycle()
                     self.next_trade_time = None
+                
+                # التحقق إذا حان وقت النتيجة (بعد التنفيذ بـ 35 ثانية)
+                if (self.pending_trade and 
+                    self.next_result_time and 
+                    current_time >= self.next_result_time and 
+                    self.trade_in_progress):
+                    
+                    logging.info(f"📊 حان وقت النتيجة: {self.format_time_exact(current_time)}")
+                    # النتيجة سيتم إرسالها تلقائياً في execute_trade_cycle
+                    self.next_result_time = None
                 
                 # انتظار 1 ثانية قبل التكرار
                 time.sleep(1)
