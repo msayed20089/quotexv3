@@ -113,38 +113,35 @@ class AdvancedScheduler:
                 'result_time': self.calculate_result_time(self.calculate_trade_execution_time(self.get_utc3_time()))
             }
             
-            # 4. إرسال إشارة الصفقة
-            self.send_trade_signal(trade_data)
-            
-            logging.info(f"📤 إشارة صفقة: {trade_data['pair']} - {trade_data['direction']}")
-            logging.info(f"⏰ مواعيد الصفقة:")
-            logging.info(f"   → الإشارة: {self.pending_trade['signal_time'].strftime('%H:%M:%S')}")
-            logging.info(f"   → التنفيذ: {self.pending_trade['trade_time'].strftime('%H:%M:%S')}")
-            logging.info(f"   → النتيجة: {self.pending_trade['result_time'].strftime('%H:%M:%S')}")
-            
-            return self.pending_trade
-            
-        except Exception as e:
-            logging.error(f"❌ خطأ في دورة الإشارة: {e}")
-            return None
+           def send_trade_signal(self, trade_data):
+    """إرسال إشارة الصفقة مع معلومات التحليل المتقدم"""
+    current_time = self.get_utc3_time().strftime("%H:%M:%S")
+    trade_time = (self.get_utc3_time() + timedelta(minutes=1)).strftime("%H:%M:%S")
     
-    def send_trade_signal(self, trade_data):
-        """إرسال إشارة الصفقة"""
-        current_time = self.get_utc3_time().strftime("%H:%M:%S")
-        trade_time = (self.get_utc3_time() + timedelta(minutes=1)).strftime("%H:%M:%S")
-        
-        signal_message = f"""
-📊 <b>إشارة تداول جديدة</b>
+    # معلومات البنوشرات
+    news_info = ""
+    if trade_data['news_impact']['events_count'] > 0:
+        news_info = f"• البنوشرات: {trade_data['news_impact']['direction']} ({trade_data['news_impact']['events_count']} حدث)"
+    else:
+        news_info = "• البنوشرات: لا توجد أحداث هامة"
+    
+    # معلومات الزخم
+    sentiment_info = f"• زخم السوق: {trade_data['market_sentiment']['overall_direction']} ({trade_data['market_sentiment']['confidence']}%)"
+    
+    signal_message = f"""
+📊 <b>إشارة تداول متقدمة</b>
 
 💰 <b>الزوج:</b> {trade_data['pair']}
 🎯 <b>الاتجاه:</b> {trade_data['direction']}
 ⏱ <b>المدة:</b> 30 ثانية
 
-📈 <b>التحليل الفني:</b>
+📈 <b>التحليل المتقدم:</b>
 • الثقة: {trade_data['confidence']}%
+• الطريقة: {trade_data['analysis_method']}
+{news_info}
+{sentiment_info}
 • RSI: {trade_data['indicators']['rsi']} ({trade_data['indicators']['rsi_signal']})
 • MACD: {trade_data['indicators']['macd_signal']}
-• الاتجاه: {trade_data['indicators']['trend']}
 
 🕒 <b>مواعيد الصفقة:</b>
 • وقت الإشارة: {current_time}
@@ -153,7 +150,7 @@ class AdvancedScheduler:
 
 ⚡ <b>جاري التحضير لدخول الصفقة...</b>
 """
-        self.telegram_bot.send_message(signal_message)
+    self.telegram_bot.send_message(signal_message)
     
     def send_skip_message(self, trade_data):
         """إرسال رسالة تخطي الصفقة"""
