@@ -31,7 +31,9 @@ class AdvancedScheduler:
             'session_start': datetime.now(UTC3_TZ),
             'last_trade_time': None,
             'skipped_trades': 0,
-            'total_analyzed': 0
+            'total_analyzed': 0,
+            'buy_count': 0,
+            'sell_count': 0
         }
         
         self.next_signal_time = None
@@ -78,6 +80,7 @@ class AdvancedScheduler:
 • تحليل فني متقدم
 • نتائج دقيقة بالشموع
 • نشر رسائل التخطي
+• توازن بين الشراء والبيع
 
 🕒 <b>الوقت الحالي:</b> {current_time} (UTC+3)
 
@@ -98,14 +101,17 @@ class AdvancedScheduler:
             trade_data = self.trading_engine.analyze_and_decide()
             self.stats['total_analyzed'] += 1
             
-            # 2. التحقق من الثقة
+            # 2. التأكد من التوازن بين BUY و SELL
+            trade_data = self.balance_buy_sell(trade_data)
+            
+            # 3. التحقق من الثقة
             if trade_data['confidence'] < 65:  # إذا الثقة أقل من 65%
                 self.send_skip_message(trade_data)
                 self.stats['skipped_trades'] += 1
                 logging.info(f"⏭️ تم تخطي صفقة {trade_data['pair']} - ثقة منخفضة: {trade_data['confidence']}%")
                 return None
             
-            # 3. تخزين بيانات الصفقة المعلقة
+            # 4. تخزين بيانات الصفقة المعلقة
             self.pending_trade = {
                 'data': trade_data,
                 'signal_time': self.get_utc3_time(),
@@ -113,22 +119,76 @@ class AdvancedScheduler:
                 'result_time': self.calculate_result_time(self.calculate_trade_execution_time(self.get_utc3_time()))
             }
             
-           def send_trade_signal(self, trade_data):
-    """إرسال إشارة الصفقة مع معلومات التحليل المتقدم"""
-    current_time = self.get_utc3_time().strftime("%H:%M:%S")
-    trade_time = (self.get_utc3_time() + timedelta(minutes=1)).strftime("%H:%M:%S")
+            # 5. إرسال إشارة الصفقة
+            self.send_trade_signal(trade_data)
+            
+            logging.info(f"📤 إشارة صفقة: {trade_data['pair']} - {trade_data['direction']}")
+            logging.info(f"⏰ مواعيد الصفقة:")
+            logging.info(f"   → الإشارة: {self.pending_trade['signal_time'].strftime('%H:%M:%S')}")
+            logging.info(f"   → التنفيذ: {self.pending_trade['trade_time'].strftime('%H:%M:%S')}")
+            logging.info(f"   → النتيجة: {self.pending_trade['result_time'].strftime('%H:%M:%S')}")
+            
+            return self.pending_trade
+            
+        except Exception as e:
+            logging.error(f"❌ خطأ في دورة الإشارة: {e}")
+            return None
+
+    def balance_buy_sell(self, trade_data):
+        """ضمان التوازن بين صفقات BUY و SELL"""
+        try:
+            current_direction = trade_data['direction']
+            
+            # إذا كانت 3 صفقات BUY متتالية، نجبر على SELL
+            if current_direction == 'BUY' and self.stats['buy_count'] >= 3:
+                trade_data['direction'] = 'SELL'
+                trade_data['confidence'] = max(65, trade_data['confidence'] - 5)
+                trade_data['analysis_method'] = 'BALANCED_SELL'
+                logging.info("⚖️ تم تحويل الصفقة إلى SELL للحفاظ على التوازن")
+            
+            # إذا كانت 3 صفقات SELL متتالية، نجبر على BUY
+            elif current_direction == 'SELL' and self.stats['sell_count'] >= 3:
+                trade_data['direction'] = 'BUY'
+                trade_data['confidence'] = max(65, trade_data['confidence'] - 5)
+                trade_data['analysis_method'] = 'BALANCED_BUY'
+                logging.info("⚖️ تم تحويل الصفقة إلى BUY للحفاظ على التوازن")
+            
+            # تحديث الإحصائيات
+            if trade_data['direction'] == 'BUY':
+                self.stats['buy_count'] += 1
+                self.stats['sell_count'] = max(0, self.stats['sell_count'] - 1)
+            else:
+                self.stats['sell_count'] += 1
+                self.stats['buy_count'] = max(0, self.stats['buy_count'] - 1)
+            
+            logging.info(f"⚖️ إحصائيات الاتجاه: BUY({self.stats['buy_count']}) / SELL({self.stats['sell_count']})")
+            
+            return trade_data
+            
+        except Exception as e:
+            logging.error(f"❌ خطأ في موازنة الاتجاهات: {e}")
+            return trade_data
     
-    # معلومات البنوشرات
-    news_info = ""
-    if trade_data['news_impact']['events_count'] > 0:
-        news_info = f"• البنوشرات: {trade_data['news_impact']['direction']} ({trade_data['news_impact']['events_count']} حدث)"
-    else:
-        news_info = "• البنوشرات: لا توجد أحداث هامة"
-    
-    # معلومات الزخم
-    sentiment_info = f"• زخم السوق: {trade_data['market_sentiment']['overall_direction']} ({trade_data['market_sentiment']['confidence']}%)"
-    
-    signal_message = f"""
+    def send_trade_signal(self, trade_data):
+        """إرسال إشارة الصفقة"""
+        current_time = self.get_utc3_time().strftime("%H:%M:%S")
+        trade_time = (self.get_utc3_time() + timedelta(minutes=1)).strftime("%H:%M:%S")
+        
+        # معلومات البنوشرات
+        news_info = ""
+        if 'news_impact' in trade_data and trade_data['news_impact']['events_count'] > 0:
+            news_info = f"• البنوشرات: {trade_data['news_impact']['direction']} ({trade_data['news_impact']['events_count']} حدث)"
+        else:
+            news_info = "• البنوشرات: لا توجد أحداث هامة"
+        
+        # معلومات الزخم
+        sentiment_info = ""
+        if 'market_sentiment' in trade_data:
+            sentiment_info = f"• زخم السوق: {trade_data['market_sentiment']['overall_direction']} ({trade_data['market_sentiment']['confidence']}%)"
+        else:
+            sentiment_info = "• زخم السوق: تحليل قيد التحديث"
+        
+        signal_message = f"""
 📊 <b>إشارة تداول متقدمة</b>
 
 💰 <b>الزوج:</b> {trade_data['pair']}
@@ -150,7 +210,7 @@ class AdvancedScheduler:
 
 ⚡ <b>جاري التحضير لدخول الصفقة...</b>
 """
-    self.telegram_bot.send_message(signal_message)
+        self.telegram_bot.send_message(signal_message)
     
     def send_skip_message(self, trade_data):
         """إرسال رسالة تخطي الصفقة"""
@@ -236,6 +296,9 @@ class AdvancedScheduler:
         price_change = candle_data['close'] - candle_data['open']
         change_percent = (price_change / candle_data['open']) * 100
         
+        # إحصائيات الاتجاهات
+        direction_stats = f"• الشراء: {self.stats['buy_count']} | البيع: {self.stats['sell_count']}"
+        
         result_message = f"""
 🎯 <b>نتيجة الصفقة</b> {result_emoji}
 
@@ -255,6 +318,7 @@ class AdvancedScheduler:
 • الصفقات الرابحة: {self.stats['win_trades']}
 • الصفقات الخاسرة: {self.stats['loss_trades']}
 • الصفقات المتخطاة: {self.stats['skipped_trades']}
+{direction_stats}
 
 ⚡ <b>جاري التحضير للإشارة القادمة...</b>
 """
